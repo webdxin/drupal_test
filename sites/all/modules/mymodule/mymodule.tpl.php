@@ -17,7 +17,7 @@
  * @see template_preprocess_poll_results()
  */
 ?>
-<h1>here is kkj</h1>
+<h1>here is kkj is always king</h1>
 <?php
 print_r($content);
 ?>
