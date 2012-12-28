@@ -1,0 +1,4 @@
+name = myModule
+description = A block module that saves the petitions.
+core = 7.x
+

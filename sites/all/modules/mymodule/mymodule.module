@@ -1,0 +1,1143 @@
+<?php
+
+/**
+ * @file
+ * Enables users to send the petitions and petitions are save with current domain flag
+ * current domain flag at backend.
+ */
+
+
+/**
+ * Implements hook_help.
+ *
+ * Displays help and module information.
+ *
+ * @param path 
+ *   Which path of the site we're using to display help
+ * @param arg 
+ *   Array that holds the current path as returned from arg() function
+ */
+function mymodule_help($path, $arg) {
+  switch ($path) {
+    case "admin/help#mymodule":
+      return '<p>'.  t("my test module") .'</p>';
+      break;
+  }
+} 
+
+/**
+ * Implements hook_block_info().
+ */
+function mymodule_block_info() {
+  $blocks['mymodule1'] = array(
+    'info' => t('my first block'), //The name that will appear in the block list.
+    'cache' => DRUPAL_CACHE_PER_ROLE, //Default
+  );
+  $blocks['mymodule2'] = array(
+    'info' => t('my second block'), //The name that will appear in the block list.
+    'cache' => DRUPAL_CACHE_PER_ROLE, //Default
+  );
+  return $blocks;
+}
+/**
+ * Implements hook_block_view().
+ * 
+ * Prepares the contents of the block.
+ */
+function mymodule_block_view($delta = '') { // have to change / Delete
+$block = array();
+  switch($delta){
+    case 'mymodule1':
+      $block['subject'] = t(' الإستدعاء ');
+      if(user_access('access content')){
+	 	 $block['content'] = drupal_get_form('petition_request_form');
+        }
+		else
+		{
+			//$block['content'] = drupal_goto('user/login');
+			$block['content'] = 'You are not authorise, go to login page.';
+		}
+  }
+  return $block;
+}
+
+
+function _mymodule_view()
+{
+	 $output = '';
+	
+		global $user;
+		$user_id = $user->uid;
+		
+		
+		$header = array(
+					array('data' => 'Title', 'field' => 'title'),
+					array('data' => t('Nid'), 'field' => 'nid'),
+					array('data' => t('body'), 'field' => 'body_value')
+					);
+		
+		
+		$query = db_select('node', 'n');
+		$query->join('field_data_body', 'b', 'n.nid = b.entity_id');
+		
+		$query->condition('n.type', 'flat')	//Only current user petitions
+			->extend('PagerDefault') 	//Pager Extender
+			->limit(2)				//10 results per page
+			->extend('TableSort')		//Sorting Extender
+			->orderByHeader($header)//Field to sort on is picked from $header
+			->fields ('n', array (
+				'title',
+				'nid'
+			))
+			->fields ('b', array (
+				'body_value'
+			))
+			;	
+			
+			
+			$results = $query
+			->execute();
+			/*
+			// query for total count without limit condition
+			$query_total = db_select('wcm_petitions', 'petitions')->condition('FK_USER_ID', $user_id)->fields('petitions', array('PK_ID') );	
+			$results_total = $query_total->execute();
+			$total_records = $results_total->rowCount();
+			*/
+			
+			$rows = array();
+			foreach ($results as $node) {
+				$rows[] = array(
+							'data' => array(
+											 l($node->title, 'node/' . $node->nid),
+								  $node->nid,
+								  $node->body_value
+							)
+				);
+			}
+			
+			$html = theme('mymodule',array('content'=>$rows) );
+			
+			/*$html = theme('table', 
+						array(
+							'header' => $header,
+							'rows'=>$rows,
+							//'caption' => ''.$user->name.' submitted '.$total_records.' petitions ',	//Optional Caption for the table
+							'sticky' => TRUE,						//Optional to indicate whether the table headers should be sticky
+							'empty' => 'No flat created...',		//Optional empty text for the table if resultset is empty
+						)
+					);
+			$html .= theme('pager',
+							array(
+								'tags' => array()
+							)
+						);*/
+			
+			$output = $html;
+	return $output;
+}
+/**
+ * Implements hook_menu().
+ */
+function mymodule_menu() {
+  $items = array();
+  
+	$items['mymodule'] = array(
+    'title' => t('Petitions'),
+    'page callback' => '_mymodule_page',
+	'page arguments' => array('petition_request_form'), 
+    'access arguments' => array('access mymodule'),
+    'type' => MENU_CALLBACK, 
+  );
+  $items['mymodule/view'] = array(
+    'title' => t('Your module'),
+    'page callback' => '_mymodule_view',
+	'page arguments' => array('list'), 
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK, 
+  );
+  
+  return $items;
+}
+/**
+ * Implements hook_theme().
+ * 
+ * Prepares the contents of the block.
+ */
+function mymodule_theme($existing, $type, $theme, $path){
+  return array(
+    'mymodule' => array(
+        'variables' => array('content' => NULL),
+        'template'  => 'mymodule', 
+    )
+  );
+}
+
+function petition_request_form($form) {
+
+
+
+$results_rest_marriage_opts = set_marriage_options();
+$rest_marriage_opts_array = array();
+foreach ($results_rest_marriage_opts as $val) {
+	$rest_marriage_opts_array[] = array('value' => $val->PK_ID);
+}
+//print_r($rest_marriage_opts_array);
+$query_options = db_select('wcm_request_title', 'request')->condition('is_active', 1 , '=')->fields('request', array('PK_ID','request_title') );	
+$results_options = $query_options->execute();
+$options = array();
+foreach ($results_options as $node) {
+	$options[$node->PK_ID] =  $node->request_title;
+}
+
+   $form['marriage_dialog'] = array('#type' => 'hidden',
+									//'#title' => t('marriage title'),
+									'#prefix' => '<div id="marriageDlg" >',
+									'#suffix' => '</div>',
+									'#id' => 'marriage_1',
+									 );
+  
+  
+  $form['#action'] = url('mymodule');
+  $form['#id'] = 'petition-request-form';
+  $form['#redirect'] = TRUE;
+  $form['#attributes'] = array('enctype' => "multipart/form-data");
+  $form['#validate'][] = 'petition_request_form_validate';
+  $form['#submit'][] = 'petition_request_submit';
+
+ $form['request_number'] = array('#type' => 'select',
+									'#title' => t('موضوع الطلب'),
+									'#options' => $options,
+									'#required' => TRUE,
+									'#id' => 'request_number',
+									 );
+	/// for rest of marrige options 
+	$form['rest_marriage_wrapper_container'] = array(
+								  '#type' => 'container',
+								  '#states' => array(
+											'visible' => array(
+											  'select#request_number' => array($rest_marriage_opts_array),
+											),
+										  ),
+								);
+				$form['rest_marriage_wrapper_container']['petition_desc'] = array('#type' => 'textarea',
+													'#title' => t('نص الطلب'),
+													'#maxlength' => 300,
+													'#rows' => 10,
+													'#cols' => 40,
+												  );
+				 $form['rest_marriage_wrapper_container']['file_picture'] = array(
+											'#title' => t('قم بارفاق صورة هويتك'),
+											'#type' => 'file',
+											'#size' => '15',
+											//'#value' => 'اختار ملف',
+											
+										);
+	
+	
+	
+	
+	//// for 1st marriage list
+ 	$form['marriage_wrapper_container'] = array(
+								  '#type' => 'container',
+								  '#states' => array(
+											'visible' => array(
+											  'select#request_number' => array('value' => '8'),
+											),
+										  ),
+								);
+			$form['marriage_wrapper_container']['petition_desc1'] = array('#type' => 'textarea',
+													'#title' => t('نص الطلب'),
+													'#maxlength' => 300,
+													'#rows' => 10,
+													'#cols' => 40,
+												  );
+			$form['marriage_wrapper_container']['file_picture1'] = array(
+											'#title' => t('ارفق صورة من هوية الخاطب.'),
+											'#type' => 'file',
+											'#size' => '15',
+											
+										);
+
+			
+			
+			$form['marriage_wrapper_container']['age'] = array(
+												  '#type' => 'textfield',
+												  '#title' => t('عمر طالب الزواج (الخاطب)'),
+												  '#size' => '15',
+												  '#description' => t('يجب ألا يقل عمر المخطوبة عن 25 عاما'),
+												);
+													
+			$form['marriage_wrapper_container']['salary'] = array(
+												  '#type' => 'textfield',
+												  '#title' => t('مقدار راتب/دخل الخاطب بالريالات'),
+												  '#size' => '15',
+												);
+			 $form['marriage_wrapper_container']['salary_certificate'] = array(
+													'#title' => t('شهادة التعريف بالراتب للخاطب من جهة العمل'),
+													'#type' => 'file',
+													'#size' => '15',
+												);										
+			 $form['marriage_wrapper_container']['property_certificate'] = array(
+													'#title' => t('شهادة التعريف للخاطب باثبات السكن'),
+													'#type' => 'file',
+													'#size' => '15',
+												);
+												
+			$form['marriage_wrapper_container']['is_divorced'] = array(
+									  '#type' => 'checkbox',
+									  '#title' => t('هل الخاطب مطلّق؟'),
+									);
+		 
+			$form['marriage_wrapper_container']['is_divorced_container'] = array(
+									  '#type' => 'container',
+									  '#states' => array(
+										'invisible' => array(
+										  'input[name="is_divorced"]' => array('checked' => FALSE),
+										),
+									  ),
+									);
+		 
+		  	 $form['marriage_wrapper_container']['is_divorced_container']['is_divorced_doc'] =  array(
+															'#title' => t('يجب أن يكون قد مضى على الطلاق 6 أشهر'),
+															'#type' => 'file',
+															'#size' => '15',
+														);
+	
+			$form['marriage_wrapper_container']['is_sick'] = array(
+									  '#type' => 'checkbox',
+									  '#title' => t('هل الخاطب متزوج وزوجته مريضة مرضا يعيقها عن ممارسة حياتها الزوجية؟'),
+									);
+		 
+			$form['marriage_wrapper_container']['is_sick_container'] = array(
+									  '#type' => 'container',
+									  '#states' => array(
+										'invisible' => array(
+										  'input[name="is_sick"]' => array('checked' => FALSE),
+										),
+									  ),
+									);
+		 
+			$form['marriage_wrapper_container']['is_sick_container']['is_sick_doc'] =  array(
+															'#title' => t('ارفق صورة تقرير طبي حديث يفيد ذلك'),
+															'#type' => 'file',
+															'#size' => '15',
+														);
+			$form['marriage_wrapper_container']['fiancee_age'] = array(
+												  '#type' => 'textfield',
+												  '#title' => t('عمر المخطوبة'),
+												  '#size' => '15',
+												);
+	
+			$form['marriage_wrapper_container']['fiancee_birth_certificate'] = array(
+												  '#type' => 'file',
+												  '#title' => t('شهادة ميلاد المخطوبة'),
+												  '#size' => '15',
+												);
+	
+			$form['marriage_wrapper_container']['fiancee_national_id'] = array(
+												  '#type' => 'file',
+												  '#title' => t('صورة (اﻹقامة/جواز السفر) للمخطوبة سارية المفعول'),
+												  '#size' => '15',
+												);
+							
+								
+		//// for 2nd marriage list			
+		$form['marriage2_wrapper_container'] = array(
+								  '#type' => 'container',
+								  '#states' => array(
+											'visible' => array(
+											  'select#request_number' => array('value' => '9'),
+											),
+										  ),
+								);
+	
+			$form['marriage2_wrapper_container']['petition_desc2'] = array('#type' => 'textarea',
+													'#title' => t('نص الطلب'),
+													'#maxlength' => 300,
+													'#rows' => 10,
+													'#cols' => 40,
+												  );
+			$form['marriage2_wrapper_container']['file_picture2'] = array(
+											'#title' => t('ارفق صورة من هوية الخاطب.'),
+											'#type' => 'file',
+											'#size' => '15',
+											
+										);
+		
+		$form['marriage2_wrapper_container']['age2'] = array(
+									  '#type' => 'textfield',
+									  '#title' => t('عمر طالب الزواج (الخاطب)'),
+									  '#size' => '15',
+									  '#description' => t('يجب ألا يقل عمر المخطوبة عن 25 عاما'),
+									);
+			
+			 $form['marriage2_wrapper_container']['salary_certificate2'] = array(
+													'#title' => t('شهادة تعريف للخاطب من جهة العمل'),
+													'#type' => 'file',
+													'#size' => '15',
+												);										
+
+												
+			$form['marriage2_wrapper_container']['fiancee_relation2'] = array(
+									  '#type' => 'checkbox',
+									  '#title' => t('هل المخطوبة ابنة عم الخاطب أو ابنة خاله من الدرجة الأولى؟'),
+									);
+		 
+			$form['marriage2_wrapper_container']['fiancee_relation2_container'] = array(
+									  '#type' => 'container',
+									  '#states' => array(
+										'invisible' => array(
+										  'input[name="fiancee_relation2"]' => array('checked' => FALSE),
+										),
+									  ),
+									);
+		 
+		  	 $form['marriage2_wrapper_container']['fiancee_relation2_container']['fiancee_relation2_doc'] =  array(
+															'#title' => t('ارفق صورة صك إثبات القرابة'),
+															'#type' => 'file',
+															'#size' => '15',
+														);
+	
+			$form['marriage2_wrapper_container']['is_divorced2'] = array(
+									  '#type' => 'checkbox',
+									  '#title' => t('هل الخاطب مطلّق؟'),
+									);
+		 
+			$form['marriage2_wrapper_container']['is_divorced2_container'] = array(
+									  '#type' => 'container',
+									  '#states' => array(
+										'invisible' => array(
+										  'input[name="is_divorced2"]' => array('checked' => FALSE),
+										),
+									  ),
+									);
+		 
+			$form['marriage2_wrapper_container']['is_divorced2_container']['is_divorced2_doc'] =  array(
+															'#title' => t('ارفق صورة قسيمة الطلاق'),
+															'#type' => 'file',
+															'#size' => '15',
+														);
+														
+			$form['marriage2_wrapper_container']['is_sick2'] = array(
+									  '#type' => 'checkbox',
+									  '#title' => t('هل الخاطب متزوج وزوجته مريضة مرضا يعيقها عن ممارسة حياتها الزوجية؟'),
+									);
+		 
+			$form['marriage2_wrapper_container']['is_sick2_container'] = array(
+									  '#type' => 'container',
+									  '#states' => array(
+										'invisible' => array(
+										  'input[name="is_sick2"]' => array('checked' => FALSE),
+										),
+									  ),
+									);
+		 
+			$form['marriage2_wrapper_container']['is_sick2_container']['is_sick2_doc'] =  array(
+															'#title' => t('ارفق صورة تقرير طبي حديث يفيد ذلك'),
+															'#type' => 'file',
+															'#size' => '15',
+														);
+			
+			
+			
+			$form['marriage2_wrapper_container']['are_widower2'] = array(
+									  '#type' => 'checkbox',
+									  '#title' => t('هل الخاطب أرمل؟'),
+									);
+		 
+			$form['marriage2_wrapper_container']['are_widower2_container'] = array(
+									  '#type' => 'container',
+									  '#states' => array(
+										'invisible' => array(
+										  'input[name="are_widower2"]' => array('checked' => FALSE),
+										),
+									  ),
+									);
+		 
+			$form['marriage2_wrapper_container']['are_widower2_container']['are_widower2_doc'] =  array(
+															'#title' => t('ارفق صورة من شهادة وفاة الزوجة'),
+															'#type' => 'file',
+															'#size' => '15',
+														);
+			
+			$form['marriage2_wrapper_container']['fiancee_passport_doc2'] =  array(
+															'#title' => t('ارفق صورة من جواز سفر المخطوبة ساري المفعول'),
+															'#type' => 'file',
+															'#size' => '15',
+														);
+			
+			$form['marriage2_wrapper_container']['fiancee_nationality2'] = array(
+									  '#type' => 'checkbox',
+									  '#title' => t('هل المخطوبة تقيم بالمملكة؟'),
+									);
+		 
+			$form['marriage2_wrapper_container']['fiancee_nationality2_container'] = array(
+									  '#type' => 'container',
+									  '#states' => array(
+										'invisible' => array(
+										  'input[name="fiancee_nationality2"]' => array('checked' => FALSE),
+										),
+									  ),
+									);
+		 
+			$form['marriage2_wrapper_container']['fiancee_nationality2_container']['fiancee_nationality2_doc1'] =  array(
+															'#title' => t('صورة من إقامة المخطوبة سارية المفعول'),
+															'#type' => 'file',
+															'#size' => '15',
+														);
+			
+			$form['marriage2_wrapper_container']['fiancee_nationality2_container']['fiancee_nationality2_doc2'] =  array(
+																'#title' => t('صورة من هوية ولي أمر المخطوبة'),
+																'#type' => 'file',
+																'#size' => '15',
+															);
+				
+			$form['marriage2_wrapper_container']['fiancee_nationality2_container']['fiancee_nationality2_doc3'] =  array(
+																'#title' => t('صورة من تعريف إثبات بسكن المخطوبة'),
+																'#type' => 'file',
+																'#size' => '15',
+															);
+				
+		
+												
+												
+//// for 3rd marriage list			
+		$form['marriage3_wrapper_container'] = array(
+								  '#type' => 'container',
+								  '#states' => array(
+											'visible' => array(
+											  'select#request_number' => array('value' => '10'),
+											),
+										  ),
+								);
+		$form['marriage3_wrapper_container']['petition_desc3'] = array('#type' => 'textarea',
+													'#title' => t('نص الطلب'),
+													'#maxlength' => 300,
+													'#rows' => 10,
+													'#cols' => 40,
+												  );
+			
+		 $form['marriage3_wrapper_container']['father_national_id'] = array(
+														'#title' => t('ارفق صورة من بطاقة العائلة لوالد المخطوبة إذا كانت مضافة فيها، أو صورة من سجلها المدني.'),
+														'#type' => 'file',
+														'#size' => '15',
+													);
+		$form['marriage3_wrapper_container']['age3'] = array(
+									  '#type' => 'textfield',
+									  '#title' => t('عمر طالب الزواج (الخاطب)'),
+									  '#size' => '15',
+									  '#description' => t('يجب ألا يقل عمر المخطوبة عن 25 عاما'),
+									);
+			
+													
+
+												
+			$form['marriage3_wrapper_container']['fiancee_relation3'] = array(
+									  '#type' => 'checkbox',
+									  '#title' => t('هل المخطوبة ابنة عم الخاطب أو ابنة خاله من الدرجة الأولى؟'),
+									);
+		 
+			$form['marriage3_wrapper_container']['fiancee_relation3_container'] = array(
+									  '#type' => 'container',
+									  '#states' => array(
+										'invisible' => array(
+										  'input[name="fiancee_relation3"]' => array('checked' => FALSE),
+										),
+									  ),
+									);
+		 
+		  	 $form['marriage3_wrapper_container']['fiancee_relation3_container']['fiancee_relation3_doc'] =  array(
+															'#title' => t('ارفق صورة صك إثبات القرابة'),
+															'#type' => 'file',
+															'#size' => '15',
+														);
+	
+			$form['marriage3_wrapper_container']['is_divorced3'] = array(
+									  '#type' => 'checkbox',
+									  '#title' => t('هل المخطوبة مطلّقة؟'),
+									);
+		 
+			$form['marriage3_wrapper_container']['is_divorced3_container'] = array(
+									  '#type' => 'container',
+									  '#states' => array(
+										'invisible' => array(
+										  'input[name="is_divorced3"]' => array('checked' => FALSE),
+										),
+									  ),
+									);
+		 
+			$form['marriage3_wrapper_container']['is_divorced3_container']['is_divorced3_doc'] =  array(
+															'#title' => t('ارفق صورة قسيمة الطلاق'),
+															'#type' => 'file',
+															'#size' => '15',
+														);
+														
+			
+			$form['marriage3_wrapper_container']['nationality3'] = array(
+									  '#type' => 'checkbox',
+									  '#title' => t('هل الخاطب مولود بالمملكة ولديه شهادة ميلاد سعودية؟'),
+									);
+		 
+			$form['marriage3_wrapper_container']['nationality3_container'] = array(
+									  '#type' => 'container',
+									  '#states' => array(
+										'invisible' => array(
+										  'input[name="nationality3"]' => array('checked' => FALSE),
+										),
+									  ),
+									);
+		 
+			$form['marriage3_wrapper_container']['nationality3_container']['nationality3_doc'] =  array(
+															'#title' => t('ارفق صورة شهادة الميلاد'),
+															'#type' => 'file',
+															'#size' => '15',
+														);
+			
+			
+			
+			
+			
+			$form['marriage3_wrapper_container']['current_residence'] = array(
+									  '#type' => 'checkbox',
+									  '#title' => t('هل الخاطب مقيم بالمملكة؟'),
+									);
+		 
+			$form['marriage3_wrapper_container']['current_residence_container'] = array(
+									  '#type' => 'container',
+									  '#states' => array(
+										'invisible' => array(
+										  'input[name="current_residence"]' => array('checked' => FALSE),
+										),
+									  ),
+									);
+		 
+			$form['marriage3_wrapper_container']['current_residence_container']['current_residence_doc1'] =  array(
+															'#title' => t('صورة من إقامة الخاطب سارية المفعول'),
+															'#type' => 'file',
+															'#size' => '15',
+														);
+			
+			$form['marriage3_wrapper_container']['current_residence_container']['current_residence_doc2'] =  array(
+																'#title' => t('صورة من تعريف جهة العمل التي على كفالتها الخاطب'),
+																'#type' => 'file',
+																'#size' => '15',
+															);
+				
+										
+  $form['actions'] = array('#type' => 'actions');
+  $form['actions']['submit'] = array('#type' => 'submit',
+    '#value' => t(' Submit your petition '),
+  );
+ 
+  return $form;
+}
+/**
+ * Implements validation from the Form API.
+ * 
+ * @param $form
+ *   A structured array containing the elements and properties of the form.
+ * @param $form_state
+ *   An array that stores information about the form's current state 
+ *   during processing.
+ */
+function petition_request_form_validate($form, &$form_state){
+  $request_number = $form_state['values']['request_number'];
+  switch($request_number)
+	{
+	case'';
+		form_set_error('request_number', t('Please select petition title.'));
+		break;
+	case'8';
+		//
+		break;
+	case'9';
+		//
+		break;
+	case'10';
+		//
+		break;
+	default;
+		//
+		break;
+	}
+  
+  if ($request_number == '' ){
+    form_set_error('request_number', t('Please enter petition title.'));
+  }
+
+}
+function petition_request_submit($form, &$form_state)
+{
+	
+	$request_number = $form_state['values']['request_number'];
+	global $user;
+  	$user_id = $user->uid;
+	global $base_root;
+	preg_match('@^(?:http://)?([^/]+)@i',$base_root, $matches);
+	$host = $matches[1];
+	$host = explode( '.' ,$host );
+	switch($host[0])
+	{
+	case'localhost';
+		$domain_flag = 1;
+		break;
+	case'taif';
+		$domain_flag = 2;
+		break;
+	case'rabigh';
+		$domain_flag = 3;
+		break;
+	default;
+		$domain_flag = 1;
+		break;
+	}
+	
+	
+	
+	$results_rest_marriage_opts = set_marriage_options();
+	$rest_marriage_opts_array = array();
+	foreach ($results_rest_marriage_opts as $val) {
+		$rest_marriage_opts_array[] = $val->PK_ID;
+	}
+	
+	
+	if (in_array($request_number, $rest_marriage_opts_array)) 
+	{
+		//drupal_set_message(t('rest of marriage == '));
+		//$file_picture = $form_state['values']['file_picture'];
+		$fid = upload_doc('file_picture');
+			if($fid){
+				//drupal_set_message('File Uploaded '.$file->filename . '==doc ID=='.$file->fid.'');
+				//insert data
+				$values = array(
+					'FK_USER_ID' => $user_id,
+					'FK_request_title_ID' => $request_number,
+					'petition_desc' => $form_state['values']['petition_desc'] ,
+					'FK_file_picture_ID' => $fid ,
+					'domain_flag' => $domain_flag  
+				);
+				$insert = db_insert('wcm_petitions')
+					-> fields($values)
+					->execute();
+				drupal_set_message(t('Petition have been saved.'));
+			}elseif(!$fid){
+				drupal_set_message('There was an error uploading the file', $type = 'error');
+			}
+		
+	}
+
+	else
+	{
+		//drupal_set_message(t(' marraige options == '));
+		switch($request_number)
+			{
+			case'8'; // option 8 for  wcm_petitions_marriage_1
+					$file_upload_flag = 0;
+					
+					$FK_file_picture1_ID = upload_doc('file_picture1');
+					$file_upload_flag = $FK_file_picture1_ID;
+					
+					$age = $form_state['values']['age'];
+					$salary = $form_state['values']['salary'];
+					
+					$FK_salary_certificate_ID = upload_doc('salary_certificate');
+					$file_upload_flag = $FK_salary_certificate_ID;
+					
+					$FK_property_certificate_ID = upload_doc('property_certificate');
+					$file_upload_flag = $FK_property_certificate_ID;
+					
+					$is_divorced = $form_state['values']['is_divorced'];
+					if($is_divorced)
+					{
+						$is_divorced = 1;
+						$FK_is_divorced_doc_ID = upload_doc('is_divorced_doc');
+						$file_upload_flag = $FK_is_divorced_doc_ID;
+					}
+					else
+					{
+						$is_divorced = 0;
+						$file_upload_flag = 1;
+						$FK_is_divorced_doc_ID = 0;
+					}
+					
+					$is_sick = $form_state['values']['is_sick'];
+					if($is_sick)
+					{
+						$is_sick = 1;
+						$FK_is_sick_doc_ID = upload_doc('is_sick_doc');
+						$file_upload_flag = $FK_is_sick_doc_ID;
+					}
+					else
+					{
+						$is_sick = 0;
+						$file_upload_flag = 1;
+						$FK_is_sick_doc_ID = 0;
+					}
+					
+					$fiancee_age = $form_state['values']['fiancee_age'];	
+					
+					$FK_fiancee_birth_certificate_ID = upload_doc('fiancee_birth_certificate');
+					$file_upload_flag = $FK_fiancee_birth_certificate_ID;
+					
+					$FK_fiancee_national_id_ID = upload_doc('fiancee_national_id');
+					$file_upload_flag = $FK_fiancee_national_id_ID;
+					
+						if($file_upload_flag){
+						//insert data
+							$values = array(
+									'FK_USER_ID' => $user_id,
+									'FK_request_title_ID' => $request_number,
+									'petition_desc' => $form_state['values']['petition_desc1'] ,
+									'FK_file_picture_ID' => 0 ,
+									'domain_flag' => $domain_flag  
+								);
+								$insert = db_insert('wcm_petitions')
+									-> fields($values)
+									->execute();
+								
+								$results_lastid = db_query('SELECT MAX(PK_ID) as PK_ID FROM {wcm_petitions} ')->fetch();
+								$lastid = $results_lastid->PK_ID;
+								
+						 // now intest in wcm_petitions_marriage_1 table
+							$values_marriage = array(
+								'FK_wcm_petitions_ID' => $lastid,
+								'FK_file_picture1_ID' => $FK_file_picture1_ID,
+								'age' => $age,
+								'salary' => $salary,
+								'FK_salary_certificate_ID' => $FK_salary_certificate_ID,
+								'FK_property_certificate_ID' => $FK_property_certificate_ID,
+								'is_divorced' => $is_divorced,
+								'FK_is_divorced_doc_ID' => $FK_is_divorced_doc_ID,
+								'is_sick' => $is_sick,
+								'FK_is_sick_doc_ID' => $FK_is_sick_doc_ID,
+								'fiancee_age' => $fiancee_age,
+								'FK_fiancee_birth_certificate_ID' => $FK_fiancee_birth_certificate_ID,
+								'FK_fiancee_national_id_ID' => $FK_fiancee_national_id_ID
+							);
+							$insert = db_insert('wcm_petitions_marriage_1')
+								-> fields($values_marriage)
+								->execute();
+							drupal_set_message(t('Petition have been saved in marraiage table 1.'));
+						}elseif(!$file_upload_flag){
+							drupal_set_message('There was an error uploading the file. Please try agian.');
+						}
+				break;
+			case'9';
+				 // option 8 for  wcm_petitions_marriage_2
+					$file_upload_flag = 0;
+					
+					$FK_file_picture2_ID = upload_doc('file_picture2');
+					$file_upload_flag = $FK_file_picture2_ID;
+					
+					$age2 = $form_state['values']['age2'];
+					
+					
+					$FK_salary_certificate2_ID = upload_doc('salary_certificate2');
+					$file_upload_flag = $FK_salary_certificate2_ID;
+					
+					
+					$fiancee_relation2 = $form_state['values']['fiancee_relation2'];
+					if($fiancee_relation2)
+					{
+						$fiancee_relation2 = 1;
+						$FK_fiancee_relation2_doc_ID = upload_doc('fiancee_relation2_doc');
+						$file_upload_flag = $FK_fiancee_relation2_doc_ID;
+					}
+					else
+					{
+						$fiancee_relation2 = 0;
+						$file_upload_flag = 1;
+						$FK_fiancee_relation2_doc_ID = 0;
+					}
+					
+					
+					
+					$is_divorced2 = $form_state['values']['is_divorced2'];
+					if($is_divorced2)
+					{
+						$is_divorced2 = 1;
+						$FK_is_divorced2_doc_ID = upload_doc('is_divorced2_doc');
+						$file_upload_flag = $FK_is_divorced2_doc_ID;
+					}
+					else
+					{
+						$is_divorced2 = 0;
+						$file_upload_flag = 1;
+						$FK_is_divorced2_doc_ID = 0;
+					}
+					
+					$is_sick2 = $form_state['values']['is_sick2'];
+					if($is_sick2)
+					{
+						$is_sick2 = 1;
+						$FK_is_sick2_doc_ID = upload_doc('is_sick2_doc');
+						$file_upload_flag = $FK_is_sick2_doc_ID;
+					}
+					else
+					{
+						$is_sick2 = 0;
+						$file_upload_flag = 1;
+						$FK_is_sick2_doc_ID = 0;
+					}
+					
+					$are_widower2 = $form_state['values']['are_widower2'];
+					if($are_widower2)
+					{
+						$are_widower2 = 1;
+						$FK_are_widower2_doc_ID = upload_doc('are_widower2_doc');
+						$file_upload_flag = $FK_are_widower2_doc_ID;
+					}
+					else
+					{
+						$are_widower2 = 0;
+						$file_upload_flag = 1;
+						$FK_are_widower2_doc_ID = 0;
+					}
+					
+					
+					
+					$FK_fiancee_passport_doc2_ID = upload_doc('fiancee_passport_doc2');
+					$file_upload_flag = $FK_fiancee_passport_doc2_ID;
+					
+					
+					
+					$fiancee_nationality2 = $form_state['values']['fiancee_nationality2'];
+					if($fiancee_nationality2)
+					{
+						$fiancee_nationality2 = 1;
+						$FK_fiancee_nationality2_doc1_ID = upload_doc('fiancee_nationality2_doc1');
+						$file_upload_flag = $FK_fiancee_nationality2_doc1_ID;
+						
+						$FK_fiancee_nationality2_doc2_ID = upload_doc('fiancee_nationality2_doc2');
+						$file_upload_flag = $FK_fiancee_nationality2_doc2_ID;
+						
+						$FK_fiancee_nationality2_doc3_ID = upload_doc('fiancee_nationality2_doc3');
+						$file_upload_flag = $FK_fiancee_nationality2_doc3_ID;
+					
+					}
+					else
+					{
+						$fiancee_nationality2 = 0;
+						$file_upload_flag = 1;
+						$FK_fiancee_nationality2_doc1_ID = 0;
+						$FK_fiancee_nationality2_doc2_ID = 0;
+						$FK_fiancee_nationality2_doc3_ID = 0;
+					}
+					
+						if($file_upload_flag){
+						//insert data
+							$values = array(
+									'FK_USER_ID' => $user_id,
+									'FK_request_title_ID' => $request_number,
+									'petition_desc' => $form_state['values']['petition_desc2'] ,
+									'FK_file_picture_ID' => 0 ,
+									'domain_flag' => $domain_flag  
+								);
+								$insert = db_insert('wcm_petitions')
+									-> fields($values)
+									->execute();
+								
+								$results_lastid = db_query('SELECT MAX(PK_ID) as PK_ID FROM {wcm_petitions} ')->fetch();
+								$lastid = $results_lastid->PK_ID;
+								
+						 // now intest in wcm_petitions_marriage_2 table
+							$values_marriage = array(
+								'FK_wcm_petitions_ID' => $lastid,
+								'FK_file_picture2_ID' => $FK_file_picture2_ID,
+								'age2' => $age2,
+								'FK_salary_certificate2_ID' => $FK_salary_certificate2_ID,
+								'fiancee_relation2' => $fiancee_relation2,
+								'FK_fiancee_relation2_doc_ID' => $FK_fiancee_relation2_doc_ID,
+								'is_divorced2' => $is_divorced2,
+								'FK_is_divorced2_doc_ID' => $FK_is_divorced2_doc_ID,
+								'is_sick2' => $is_sick2,
+								'FK_is_sick2_doc_ID' => $FK_is_sick2_doc_ID,
+								'are_widower2' => $are_widower2,
+								'FK_are_widower2_doc_ID' => $FK_are_widower2_doc_ID,
+								'FK_fiancee_passport_doc2_ID' => $FK_fiancee_passport_doc2_ID,
+								'fiancee_nationality2' => $fiancee_nationality2,
+								'FK_fiancee_nationality2_doc1_ID' => $FK_fiancee_nationality2_doc1_ID,
+								'FK_fiancee_nationality2_doc2_ID' => $FK_fiancee_nationality2_doc2_ID,
+								'FK_fiancee_nationality2_doc3_ID' => $FK_fiancee_nationality2_doc3_ID
+							);
+							$insert = db_insert('wcm_petitions_marriage_2')
+								-> fields($values_marriage)
+								->execute();
+							drupal_set_message(t('Petition have been saved in marraiage table 2.'));
+						}elseif(!$file_upload_flag){
+							drupal_set_message('There was an error uploading the file. Please try agian.');
+						}
+				break;
+			case'10';
+				// option 8 for  wcm_petitions_marriage_3
+					$file_upload_flag = 0;
+					
+					$FK_father_national_id_ID = upload_doc('father_national_id');
+					$file_upload_flag = $FK_father_national_id_ID;
+					
+					$age3 = $form_state['values']['age3'];
+					
+					$fiancee_relation3 = $form_state['values']['fiancee_relation3'];
+					if($fiancee_relation3)
+					{
+						$fiancee_relation3 = 1;
+						$FK_fiancee_relation3_doc_ID = upload_doc('fiancee_relation3_doc');
+						$file_upload_flag = $FK_fiancee_relation3_doc_ID;
+					}
+					else
+					{
+						$fiancee_relation3 = 0;
+						$file_upload_flag = 1;
+						$FK_fiancee_relation3_doc_ID = 0;
+					}
+					
+					
+					$is_divorced3 = $form_state['values']['is_divorced3'];
+					if($is_divorced3)
+					{
+						$is_divorced3 = 1;
+						$FK_is_divorced3_doc_ID = upload_doc('is_divorced3_doc');
+						$file_upload_flag = $FK_is_divorced3_doc_ID;
+					}
+					else
+					{
+						$is_divorced3 = 0;
+						$file_upload_flag = 1;
+						$FK_is_divorced3_doc_ID = 0;
+					}
+					
+					$nationality3 = $form_state['values']['nationality3'];
+					if($nationality3)
+					{
+						$nationality3 = 1;
+						$FK_nationality3_doc_ID = upload_doc('nationality3_doc');
+						$file_upload_flag = $FK_nationality3_doc_ID;
+					}
+					else
+					{
+						$nationality3 = 0;
+						$file_upload_flag = 1;
+						$FK_nationality3_doc_ID = 0;
+					}
+					
+					$current_residence = $form_state['values']['current_residence'];
+					if($current_residence)
+					{
+						$current_residence = 1;
+						$FK_current_residence_doc1_ID = upload_doc('current_residence_doc1');
+						$file_upload_flag = $FK_current_residence_doc1_ID;
+						
+						$FK_current_residence_doc2_ID = upload_doc('current_residence_doc2');
+						$file_upload_flag = $FK_current_residence_doc2_ID;
+						
+						
+					}
+					else
+					{
+						$current_residence = 0;
+						$file_upload_flag = 1;
+						$FK_current_residence_doc1_ID = 0;
+						$FK_current_residence_doc2_ID = 0;
+					}
+					
+					
+					
+						if($file_upload_flag){
+						//insert data
+							$values = array(
+									'FK_USER_ID' => $user_id,
+									'FK_request_title_ID' => $request_number,
+									'petition_desc' => $form_state['values']['petition_desc3'] ,
+									'FK_file_picture_ID' => 0 ,
+									'domain_flag' => $domain_flag  
+								);
+								$insert = db_insert('wcm_petitions')
+									-> fields($values)
+									->execute();
+								
+								$results_lastid = db_query('SELECT MAX(PK_ID) as PK_ID FROM {wcm_petitions} ')->fetch();
+								$lastid = $results_lastid->PK_ID;
+								
+						 // now intest in wcm_petitions_marriage_3 table
+							$values_marriage = array(
+								'FK_wcm_petitions_ID' => $lastid,
+								'FK_father_national_id_ID' => $FK_father_national_id_ID,
+								'age3' => $age3,
+								'fiancee_relation3' => $fiancee_relation3,
+								'FK_fiancee_relation3_doc_ID' => $FK_fiancee_relation3_doc_ID,
+								'is_divorced3' => $is_divorced3,
+								'FK_is_divorced3_doc_ID' => $FK_is_divorced3_doc_ID,
+								'nationality3' => $nationality3,
+								'FK_nationality3_doc_ID' => $FK_nationality3_doc_ID,
+								'current_residence' => $current_residence,
+								'FK_current_residence_doc1_ID' => $FK_current_residence_doc1_ID,
+								'FK_current_residence_doc2_ID' => $FK_current_residence_doc2_ID
+							);
+							$insert = db_insert('wcm_petitions_marriage_3')
+								-> fields($values_marriage)
+								->execute();
+							drupal_set_message(t('Petition have been saved in marraiage table 3.'));
+						}elseif(!$file_upload_flag){
+							drupal_set_message('There was an error uploading the file. Please try agian.');
+						}
+					
+				break;
+			
+			}
+		
+		
+	}
+
+
+	
+	/* //$form_state['redirect'] = 'mymodule/'.$process_number;
+	
+	$form_state['redirect'] = array(
+		  'mymodule/'.$process_number.'',
+		  
+		);
+	
+	//drupal_goto('mymodule/'.$process_number.'');*/
+}
+/**
+ * Implements hook_permission().
+ */
+function mymodule_permission(){
+  return array(
+    'access mymodule' => array(
+      'title' => t('Access content for the Search process module'),
+    )  
+  );  
+}
+
+
+function set_marriage_options()
+{
+	$query_rest_marriage_opts = db_select('wcm_request_title', 'request')->condition('PK_ID', array(1, 7), 'BETWEEN' )->condition('is_active', 1)->	fields('request', array('PK_ID','request_title') );
+	$results_rest_marriage_opts = $query_rest_marriage_opts->execute();
+	
+	return $results_rest_marriage_opts;
+}
+function upload_doc($source = '')
+{
+$extentions_array = array('png gif jpg jpeg txt');
+$filepath = 'public://petition_docs';
+						file_prepare_directory($filepath, FILE_CREATE_DIRECTORY);
+						$file = file_save_upload(''.$source.'', array('file_validate_extensions' => $extentions_array), $filepath , $replace = FILE_EXISTS_RENAME);
+						
+						if($file){
+						
+							$fid = $file->fid;
+							//$doc_url = file_create_url($file->uri);
+							// Very important to do this or file will be deleted on cron
+							$file->status = FILE_STATUS_PERMANENT;
+							$file = file_save($file);
+							
+							return $fid;
+						}
+						else
+						{
+						//drupal_set_message(t(' marraige options ==10  '));
+						return 0;
+						}
+}
